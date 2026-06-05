@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resizer-config
+  namespace: hack-resizer
+data:
+  AUTO_APPLY_ENABLED: "false"
+  THRESHOLD_PERCENT: "20"
+  SCHEDULE_INTERVAL_MINUTES: "60"
+  NAMESPACES: "prajwal-hack,prajwal-hack-region-1"
+  SLACK_CHANNEL: "#k8s-hack-resizer"
+  NODE_INSTANCE_TYPE: "m5.xlarge"

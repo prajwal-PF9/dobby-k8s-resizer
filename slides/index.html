@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dobby's K8s Resource Resizer ⚡</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=IM+Fell+English:ital@0;1&family=Source+Code+Pro:wght@400;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --gold: #d4a017;
+    --gold-light: #f0c040;
+    --parchment: #f5e6c8;
+    --dark: #0d0d1a;
+    --dark2: #1a1a2e;
+    --dark3: #16213e;
+    --red: #8b0000;
+    --green: #1a472a;
+    --glow: 0 0 20px rgba(212, 160, 23, 0.4);
+  }
+
+  body {
+    font-family: 'IM Fell English', Georgia, serif;
+    background: var(--dark);
+    color: var(--parchment);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .slideshow {
+    width: 100%;
+    height: 100%;
+    position: relative;
+  }
+
+  .slide {
+    display: none;
+    width: 100%;
+    height: 100%;
+    padding: 48px 64px;
+    position: absolute;
+    top: 0; left: 0;
+    background: radial-gradient(ellipse at top left, #1e1e3a 0%, #0d0d1a 60%);
+    animation: fadeIn 0.6s ease;
+  }
+
+  .slide.active { display: flex; flex-direction: column; justify-content: center; }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Stars background */
+  .slide::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,0.6) 0%, transparent 100%),
+      radial-gradient(1px 1px at 45% 10%, rgba(255,255,255,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 75% 35%, rgba(255,255,255,0.5) 0%, transparent 100%),
+      radial-gradient(1px 1px at 90% 15%, rgba(255,255,255,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 30% 80%, rgba(255,255,255,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 60% 70%, rgba(255,255,255,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 85% 85%, rgba(255,255,255,0.5) 0%, transparent 100%),
+      radial-gradient(1px 1px at 10% 60%, rgba(255,255,255,0.3) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .slide > * { position: relative; z-index: 1; }
+
+  /* NAVIGATION */
+  .nav {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    z-index: 100;
+  }
+
+  .nav button {
+    background: rgba(212, 160, 23, 0.15);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 10px 28px;
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.3s;
+    border-radius: 2px;
+  }
+
+  .nav button:hover {
+    background: rgba(212, 160, 23, 0.3);
+    box-shadow: var(--glow);
+  }
+
+  .nav .counter {
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    letter-spacing: 2px;
+    min-width: 60px;
+    text-align: center;
+  }
+
+  /* BORDERS & DECORATIONS */
+  .magic-border {
+    border: 1px solid rgba(212, 160, 23, 0.35);
+    padding: 24px 32px;
+    position: relative;
+    background: rgba(10, 10, 26, 0.6);
+  }
+
+  .magic-border::before, .magic-border::after {
+    content: '✦';
+    position: absolute;
+    color: var(--gold);
+    font-size: 12px;
+  }
+
+  .magic-border::before { top: -8px; left: -8px; }
+  .magic-border::after { bottom: -8px; right: -8px; }
+
+  /* TYPOGRAPHY */
+  h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 52px;
+    font-weight: 900;
+    color: var(--gold-light);
+    text-shadow: 0 0 40px rgba(212, 160, 23, 0.6), 0 2px 4px rgba(0,0,0,0.8);
+    line-height: 1.1;
+    letter-spacing: 2px;
+  }
+
+  h2 {
+    font-family: 'Cinzel', serif;
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 1px;
+    margin-bottom: 28px;
+    text-shadow: 0 0 20px rgba(212, 160, 23, 0.3);
+  }
+
+  h3 {
+    font-family: 'Cinzel', serif;
+    font-size: 18px;
+    color: var(--gold-light);
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+
+  .subtitle {
+    font-size: 22px;
+    color: rgba(245, 230, 200, 0.75);
+    font-style: italic;
+    margin-top: 12px;
+  }
+
+  .divider {
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin: 20px 0;
+  }
+
+  /* GRID LAYOUTS */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  /* CARDS */
+  .card {
+    background: rgba(26, 26, 46, 0.8);
+    border: 1px solid rgba(212, 160, 23, 0.25);
+    border-radius: 4px;
+    padding: 20px 24px;
+  }
+
+  .card p, .card li { font-size: 15px; line-height: 1.7; color: rgba(245,230,200,0.85); }
+  .card ul { padding-left: 16px; }
+  .card li { margin-bottom: 6px; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    font-family: 'Source Code Pro', monospace;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid rgba(212, 160, 23, 0.2);
+    border-left: 3px solid var(--gold);
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #a8d8a8;
+    border-radius: 0 4px 4px 0;
+    overflow: hidden;
+  }
+
+  /* SLACK MOCK */
+  .slack-mock {
+    background: #1a1d21;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .slack-header {
+    color: #d1d2d3;
+    font-weight: 600;
+    margin-bottom: 12px;
+    font-size: 14px;
+    border-bottom: 1px solid #2c2d30;
+    padding-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .slack-channel { color: #fff; font-weight: 700; }
+  .slack-bot { color: #4a9eed; font-weight: 600; }
+  .slack-msg { color: #d1d2d3; margin: 8px 0; }
+  .slack-section { background: #222529; border-left: 3px solid #4a9eed; padding: 10px 12px; margin: 6px 0; border-radius: 0 4px 4px 0; }
+  .slack-bold { font-weight: 700; color: #fff; }
+  .slack-code { background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 3px; color: #e8912d; }
+  .slack-saving { color: #4caf50; font-weight: 700; }
+  .slack-divider { border-top: 1px solid #2c2d30; margin: 6px 0; }
+
+  /* GOLDILOCKS MOCK */
+  .goldilocks-mock {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    font-family: -apple-system, sans-serif;
+    font-size: 12px;
+    color: #333;
+  }
+
+  .gl-header {
+    background: #1e88e5;
+    color: white;
+    padding: 10px 16px;
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .gl-ns-badge {
+    background: rgba(255,255,255,0.2);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+  }
+
+  .gl-table { width: 100%; border-collapse: collapse; }
+  .gl-table th { background: #f5f5f5; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: 700; color: #555; border-bottom: 1px solid #e0e0e0; }
+  .gl-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; font-size: 11px; }
+  .gl-table tr:hover td { background: #f9f9f9; }
+  .gl-lower { color: #e53935; font-weight: 600; }
+  .gl-cur { color: #555; }
+  .gl-rec { color: #43a047; font-weight: 600; }
+
+  /* STAT BOXES */
+  .stat-box {
+    background: rgba(26, 26, 46, 0.9);
+    border: 1px solid rgba(212, 160, 23, 0.4);
+    border-radius: 6px;
+    padding: 24px;
+    text-align: center;
+  }
+
+  .stat-number {
+    font-family: 'Cinzel', serif;
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--gold-light);
+    text-shadow: 0 0 30px rgba(212,160,23,0.5);
+  }
+
+  .stat-label { font-size: 13px; color: rgba(245,230,200,0.6); margin-top: 6px; letter-spacing: 1px; }
+
+  /* TAG */
+  .tag {
+    display: inline-block;
+    background: rgba(212,160,23,0.15);
+    border: 1px solid rgba(212,160,23,0.4);
+    color: var(--gold);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-family: 'Source Code Pro', monospace;
+    margin: 2px;
+  }
+
+  /* SLIDE 1 */
+  .slide-1-content { text-align: center; }
+  .dobby-emoji { font-size: 72px; margin-bottom: 16px; filter: drop-shadow(0 0 20px rgba(212,160,23,0.4)); }
+  .hackathon-badge {
+    display: inline-block;
+    border: 1px solid rgba(212,160,23,0.5);
+    padding: 6px 20px;
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 24px;
+  }
+
+  /* FOOTER */
+  .slide-footer {
+    position: absolute;
+    bottom: 80px;
+    left: 64px;
+    right: 64px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    color: rgba(212,160,23,0.4);
+    letter-spacing: 2px;
+  }
+
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .arch-node {
+    background: rgba(212,160,23,0.1);
+    border: 1px solid rgba(212,160,23,0.3);
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'Source Code Pro', monospace;
+    color: var(--gold-light);
+    white-space: nowrap;
+  }
+
+  .arch-arrow {
+    color: var(--gold);
+    font-size: 18px;
+    opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="slideshow">
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 1: TITLE -->
+  <div class="slide active" id="slide-1">
+    <div class="slide-1-content" style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+      <div class="hackathon-badge">✦ AI EDITION HACKATHON ✦</div>
+      <div class="dobby-emoji">🧦</div>
+      <h1>Dobby's K8s<br>Resource Resizer</h1>
+      <div class="divider" style="margin: 20px auto;"></div>
+      <p class="subtitle">"Dobby has no master. Dobby is a free elf.<br>And Dobby is here to free your over-provisioned pods."</p>
+      <div style="margin-top: 36px; display:flex; gap: 12px; flex-wrap:wrap; justify-content:center;">
+        <span class="tag">Goldilocks + VPA</span>
+        <span class="tag">Slack Bot</span>
+        <span class="tag">Auto-Resize</span>
+        <span class="tag">Cost Savings</span>
+        <span class="tag">Python</span>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>PLATFORM9 · PCD INFRA</span>
+      <span>JUNE 2026</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 2: PROBLEM -->
+  <div class="slide" id="slide-2">
+    <h2>⚡ The Problem</h2>
+    <div class="two-col" style="gap: 32px; align-items: start;">
+      <div>
+        <div class="magic-border">
+          <h3>The Muggle Way</h3>
+          <p style="font-size:15px; line-height:1.8; color: rgba(245,230,200,0.8);">
+            Engineers set CPU and memory requests when they write a Deployment — usually a conservative guess.
+            Those guesses never get revisited. Pods hoard resources they never use.
+            AWS bills you for every idle millicore.
+          </p>
+          <br>
+          <p style="font-size:15px; line-height:1.8; color: rgba(245,230,200,0.8);">
+            Platform9's PCD product runs <strong style="color:var(--gold)">80+ Deployments</strong> across two namespaces.
+            Nobody has time to hand-tune resource requests for each one.
+          </p>
+        </div>
+        <div style="margin-top: 20px;">
+          <div class="code-block">
+# What we actually had:
+resources:
+  requests:
+    cpu: "2000m"    # using ~120m
+    memory: "2Gi"   # using ~300Mi
+
+# That's 16x over-provisioned CPU ⚡</div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap: 16px;">
+        <div class="stat-box">
+          <div class="stat-number">80+</div>
+          <div class="stat-label">DEPLOYMENTS TO TUNE</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">$177</div>
+          <div class="stat-label">MONTHLY SAVINGS FOUND<br><span style="font-size:11px">IN FIRST RUN · SINGLE NAMESPACE</span></div>
+        </div>
+        <div class="card">
+          <h3>Why not just use ScaleOps / Goldilocks Pro?</h3>
+          <ul>
+            <li>ScaleOps — paid, external dependency</li>
+            <li>Goldilocks Slack integration — paid tier</li>
+            <li>We run on-prem & custom infra</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>DOBBY'S K8S RESOURCE RESIZER</span>
+      <span>THE PROBLEM</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 3: HOW IT WORKS -->
+  <div class="slide" id="slide-3">
+    <h2>🪄 How Dobby Works</h2>
+    <div style="margin-bottom: 24px;">
+      <div class="arch-flow">
+        <div class="arch-node">📊 Goldilocks + VPA<br><span style="font-size:11px; opacity:0.7">Helm charts</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">🐍 Python Controller<br><span style="font-size:11px; opacity:0.7">VPA reader + patcher</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">💬 Slack Bot<br><span style="font-size:11px; opacity:0.7">Socket mode</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">⚙️ K8s Deployments<br><span style="font-size:11px; opacity:0.7">Auto-patched</span></div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div style="display:flex; flex-direction:column; gap: 16px;">
+        <div class="card">
+          <h3>🔍 Recommendation Mode</h3>
+          <ul>
+            <li>VPA observes real CPU/memory usage</li>
+            <li>Goldilocks creates one VPA per Deployment</li>
+            <li>Controller reads recommendations + current requests</li>
+            <li>Calculates cost delta (AWS on-demand pricing)</li>
+            <li>Posts to <code style="background:rgba(255,255,255,0.1); padding:1px 5px; font-family:monospace">#k8s-hack-resizer</code> Slack channel</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>⚡ Auto-Resize Mode</h3>
+          <ul>
+            <li>Off by default — explicit opt-in required</li>
+            <li>Threshold: only act when deviation &gt; 20%</li>
+            <li>Patches <code style="background:rgba(255,255,255,0.1); padding:1px 5px; font-family:monospace">resources.requests</code> only (never limits)</li>
+            <li>Runs on a configurable schedule (60 min)</li>
+            <li>Toggle with <code style="background:rgba(255,255,255,0.1); padding:1px 5px; font-family:monospace">/resize autoapply on</code></li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap: 14px;">
+        <div class="card">
+          <h3>🔒 Safety Constraints</h3>
+          <ul>
+            <li>RBAC scoped to <em>only</em> <code style="background:rgba(255,255,255,0.1); padding:1px 5px; font-family:monospace">prajwal-hack</code> + <code style="background:rgba(255,255,255,0.1); padding:1px 5px; font-family:monospace">prajwal-hack-region-1</code></li>
+            <li>VPA in recommendation-only mode (no auto-eviction)</li>
+            <li>Escape hatch: <code style="background:rgba(255,255,255,0.1); padding:1px 5px; font-family:monospace">hack-resizer/skip: "true"</code> annotation</li>
+            <li>No other cluster components touched</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>💬 Slash Commands</h3>
+          <div class="code-block" style="font-size:12px;">
+/resize recommend   → show all savings
+/resize apply       → patch all now
+/resize status      → current state
+/resize autoapply on|off</div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>DOBBY'S K8S RESOURCE RESIZER</span>
+      <span>HOW IT WORKS</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 4: DEMO -->
+  <div class="slide" id="slide-4">
+    <h2>✨ In Action</h2>
+    <div class="two-col" style="gap: 24px; align-items: start;">
+
+      <!-- Goldilocks UI Mock -->
+      <div>
+        <h3 style="margin-bottom: 10px; font-size: 14px; color: rgba(245,230,200,0.6); font-family: 'Source Code Pro', monospace; letter-spacing: 2px;">GOLDILOCKS DASHBOARD</h3>
+        <div class="goldilocks-mock">
+          <div class="gl-header">
+            🐻 Goldilocks
+            <span class="gl-ns-badge">prajwal-hack-region-1</span>
+          </div>
+          <table class="gl-table">
+            <thead>
+              <tr>
+                <th>DEPLOYMENT</th>
+                <th>CONTAINER</th>
+                <th>CPU NOW</th>
+                <th>CPU REC ▼</th>
+                <th>MEM NOW</th>
+                <th>MEM REC ▼</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>cinder-api</td>
+                <td>cinder-api</td>
+                <td class="gl-cur">2000m</td>
+                <td class="gl-lower">120m</td>
+                <td class="gl-cur">2Gi</td>
+                <td class="gl-lower">312Mi</td>
+              </tr>
+              <tr>
+                <td>nova-api</td>
+                <td>nova-api</td>
+                <td class="gl-cur">1500m</td>
+                <td class="gl-lower">200m</td>
+                <td class="gl-cur">1Gi</td>
+                <td class="gl-lower">256Mi</td>
+              </tr>
+              <tr>
+                <td>neutron-server</td>
+                <td>neutron-server</td>
+                <td class="gl-cur">1000m</td>
+                <td class="gl-lower">85m</td>
+                <td class="gl-cur">1Gi</td>
+                <td class="gl-lower">180Mi</td>
+              </tr>
+              <tr>
+                <td>keystone</td>
+                <td>keystone</td>
+                <td class="gl-cur">500m</td>
+                <td class="gl-lower">50m</td>
+                <td class="gl-cur">512Mi</td>
+                <td class="gl-lower">128Mi</td>
+              </tr>
+              <tr>
+                <td>glance-api</td>
+                <td>glance-api</td>
+                <td class="gl-cur">800m</td>
+                <td class="gl-lower">65m</td>
+                <td class="gl-cur">768Mi</td>
+                <td class="gl-lower">192Mi</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="padding: 8px 10px; background: #f5f5f5; font-size: 11px; color: #666; border-top: 1px solid #e0e0e0;">
+            ● Showing 5 of 82 deployments  &nbsp;|&nbsp; 🔴 = Lower recommended
+          </div>
+        </div>
+      </div>
+
+      <!-- Slack Mock -->
+      <div>
+        <h3 style="margin-bottom: 10px; font-size: 14px; color: rgba(245,230,200,0.6); font-family: 'Source Code Pro', monospace; letter-spacing: 2px;">SLACK OUTPUT · /resize recommend</h3>
+        <div class="slack-mock">
+          <div class="slack-header">
+            <span style="color:#56ba69"># </span>
+            <span class="slack-channel">k8s-hack-resizer</span>
+          </div>
+          <div style="margin-bottom: 6px;">
+            <span class="slack-bot">hack-resizer</span>
+            <span style="color:#666; font-size:11px;"> &nbsp;12:59 AM</span>
+          </div>
+          <div class="slack-section">
+            <div style="font-weight:700; color:#fff; font-size:14px; margin-bottom:6px;">💡 Resource Optimization Recommendations</div>
+            <div class="slack-divider"></div>
+            <div style="margin: 6px 0;">
+              <span class="slack-bold">Namespace:</span> <span class="slack-code">prajwal-hack-region-1</span>&nbsp; | &nbsp;<span class="slack-bold">Deployment:</span> <span class="slack-code">cinder-api</span>
+            </div>
+            <div style="color:#aaa; font-size:12px; margin: 4px 0 4px 8px;">• <span class="slack-code">cinder-api</span>: CPU 2000m → 120m | Memory 2048Mi → 312Mi</div>
+            <div style="font-size:12px; margin-left: 8px;">💰 Estimated saving: <span class="slack-saving">$32.47/month</span></div>
+            <div class="slack-divider"></div>
+            <div style="margin: 6px 0;">
+              <span class="slack-bold">Namespace:</span> <span class="slack-code">prajwal-hack-region-1</span>&nbsp; | &nbsp;<span class="slack-bold">Deployment:</span> <span class="slack-code">nova-api</span>
+            </div>
+            <div style="color:#aaa; font-size:12px; margin: 4px 0 4px 8px;">• <span class="slack-code">nova-api</span>: CPU 1500m → 200m | Memory 1024Mi → 256Mi</div>
+            <div style="font-size:12px; margin-left: 8px;">💰 Estimated saving: <span class="slack-saving">$19.83/month</span></div>
+            <div class="slack-divider"></div>
+            <div style="color:#aaa; font-size:12px; text-align:center;">+ 79 more deployments...</div>
+            <div class="slack-divider"></div>
+            <div style="font-size:13px; font-weight:700; color:#4caf50; text-align: center; margin-top: 6px;">
+              🏦 TOTAL ESTIMATED SAVINGS: $177.42/month
+            </div>
+            <div style="font-size:11px; color:#aaa; text-align:center; margin-top:2px;">Run <span class="slack-code">/resize apply</span> to apply all recommendations.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>DOBBY'S K8S RESOURCE RESIZER</span>
+      <span>LIVE DEMO</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 5: RESULTS -->
+  <div class="slide" id="slide-5">
+    <h2>🏆 Results & What's Next</h2>
+    <div class="three-col" style="margin-bottom: 24px;">
+      <div class="stat-box">
+        <div class="stat-number">$177</div>
+        <div class="stat-label">PER MONTH SAVINGS<br>IDENTIFIED — FIRST RUN</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number">82</div>
+        <div class="stat-label">DEPLOYMENTS ANALYZED<br>ACROSS 2 NAMESPACES</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number">28</div>
+        <div class="stat-label">UNIT TESTS<br>ALL PASSING ✓</div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3>✅ What We Built</h3>
+        <ul>
+          <li>Deployed Goldilocks + VPA (Helm) — recommendation-only mode, no evictions</li>
+          <li>Python controller: VPA reader, cost calculator, deployment patcher</li>
+          <li>Slack Bolt bot (socket mode — no public URL needed)</li>
+          <li>RBAC scoped strictly to target namespaces only</li>
+          <li>Two operating modes: recommend-only and auto-apply (opt-in)</li>
+          <li>Chunked Slack messages to handle 80+ workload payloads</li>
+        </ul>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <h3>🔮 Possible Enhancements</h3>
+          <ul>
+            <li>Dynamic namespace discovery via labels</li>
+            <li>Prometheus metrics export</li>
+            <li>Weekly cost savings digest</li>
+            <li>Per-workload scheduling windows</li>
+          </ul>
+        </div>
+        <div class="magic-border" style="text-align:center;">
+          <p style="font-size: 16px; font-style: italic; color: rgba(245,230,200,0.9); line-height: 1.7;">
+            "Dobby is free. And so is your wasted CPU."
+          </p>
+          <div class="divider" style="margin: 12px auto;"></div>
+          <p style="font-size: 13px; color: var(--gold); font-family: 'Cinzel', serif; letter-spacing: 1px;">
+            🧦 Built in one hackathon day &nbsp;·&nbsp; Platform9 AI Edition 2026
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>DOBBY'S K8S RESOURCE RESIZER</span>
+      <span>THANK YOU ⚡</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button onclick="changeSlide(-1)">← Prev</button>
+  <span class="counter" id="counter">1 / 5</span>
+  <button onclick="changeSlide(1)">Next →</button>
+</div>
+
+<script>
+  let current = 1;
+  const total = 5;
+
+  function changeSlide(dir) {
+    const old = document.getElementById('slide-' + current);
+    old.classList.remove('active');
+    current = Math.max(1, Math.min(total, current + dir));
+    const next = document.getElementById('slide-' + current);
+    next.classList.add('active');
+    document.getElementById('counter').textContent = current + ' / ' + total;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') changeSlide(1);
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') changeSlide(-1);
+  });
+</script>
+
+</body>
+</html>

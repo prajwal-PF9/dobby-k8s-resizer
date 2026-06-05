@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hack-resizer
+  namespace: hack-resizer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hack-resizer
+  template:
+    metadata:
+      labels:
+        app: hack-resizer
+    spec:
+      serviceAccountName: hack-resizer
+      containers:
+        - name: hack-resizer
+          image: docker.io/prajwalpf9/hack-resizer:latest2
+          envFrom:
+            - configMapRef:
+                name: resizer-config
+            - secretRef:
+                name: resizer-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
